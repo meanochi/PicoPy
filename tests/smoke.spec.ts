@@ -10,8 +10,16 @@ async function setCode(page: Page, code: string) {
 
 async function waitForReady(page: Page) {
   await expect(page.locator('.chip')).toContainText('Ready', { timeout: 60_000 });
-  // These tests exercise script mode; the app opens in notebook mode.
-  await page.getByRole('button', { name: 'Script' }).click();
+}
+
+/** Create and open a fresh script file via the drawer. */
+async function newScript(page: Page) {
+  await page.getByRole('button', { name: 'Files' }).click();
+  await page.getByRole('button', { name: '+ Script' }).click();
+  // The drawer closes once the new file is actually open — only then is it
+  // safe to type/set code (opening overwrites the editor content).
+  await expect(page.locator('.drawer-backdrop')).toHaveCount(0);
+  await expect(page.locator('.topbar__file')).toContainText('.py');
 }
 
 const runButton = (page: Page) => page.getByRole('button', { name: 'Run', exact: true });
@@ -19,6 +27,7 @@ const runButton = (page: Page) => page.getByRole('button', { name: 'Run', exact:
 test('boots Python and runs a program', async ({ page }) => {
   await page.goto('/');
   await waitForReady(page);
+  await newScript(page);
   await setCode(page, 'print(6 * 7)\nprint("done" + "!")');
   await runButton(page).click();
   const console = page.getByTestId('console');
@@ -30,6 +39,7 @@ test('boots Python and runs a program', async ({ page }) => {
 test('input() blocks, accepts an answer, and resumes', async ({ page }) => {
   await page.goto('/');
   await waitForReady(page);
+  await newScript(page);
   await setCode(page, 'name = input("Who? ")\nprint(f"Hi {name}, nice to meet you")');
   await runButton(page).click();
   const field = page.getByTestId('stdin-field');
@@ -44,6 +54,7 @@ test('input() blocks, accepts an answer, and resumes', async ({ page }) => {
 test('errors show a friendly traceback pointing at main.py', async ({ page }) => {
   await page.goto('/');
   await waitForReady(page);
+  await newScript(page);
   await setCode(page, 'x = 1\ny = x / 0');
   await runButton(page).click();
   const console = page.getByTestId('console');
@@ -55,6 +66,7 @@ test('errors show a friendly traceback pointing at main.py', async ({ page }) =>
 test('Stop kills an infinite loop and the runtime recovers', async ({ page }) => {
   await page.goto('/');
   await waitForReady(page);
+  await newScript(page);
   await setCode(page, 'while True:\n    pass');
   await runButton(page).click();
   await expect(page.getByRole('button', { name: 'Stop' })).toBeVisible();
@@ -70,6 +82,7 @@ test('Stop kills an infinite loop and the runtime recovers', async ({ page }) =>
 test('runs get fresh globals (no leftover variables)', async ({ page }) => {
   await page.goto('/');
   await waitForReady(page);
+  await newScript(page);
   await setCode(page, 'leftover = 123\nprint("first run ok")');
   await runButton(page).click();
   await expect(page.getByTestId('console')).toContainText('first run ok');

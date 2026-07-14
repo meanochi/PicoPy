@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { EditorHandle } from '../editor/setup';
+import { type WorkspaceFile, fileId, filesStore } from '../files/store';
 import { t } from '../i18n';
 import { parseIpynb, serializeIpynb } from '../notebook/ipynb';
 import {
@@ -11,10 +12,11 @@ import {
 } from '../notebook/model';
 import { NotebookView } from '../notebook/NotebookView';
 import { Runtime, type RuntimeState } from '../runtime/manager';
+import { Drawer, type SampleRef } from './Drawer';
 import { appendChunk } from './output';
 import { ScriptView } from './ScriptView';
 
-const STARTER_SCRIPT = `# Welcome to PicoPy! Press Run ▶ to try this program.
+const STARTER_SCRIPT = `# A Python script: it runs top to bottom, like a recipe.
 
 name = input("What's your name? ")
 print(f"Hello, {name}! Welcome to Python 🐍")
@@ -23,20 +25,28 @@ for i in range(1, 4):
     print(i * "⭐")
 `;
 
-type Mode = 'notebook' | 'script';
+type FileMeta = Omit<WorkspaceFile, 'content'>;
+
+function uniqueName(base: string, ext: string, taken: string[]): string {
+  let name = `${base}.${ext}`;
+  for (let n = 2; taken.includes(name); n++) name = `${base} ${n}.${ext}`;
+  return name;
+}
 
 export function App() {
-  const [mode, setMode] = useState<Mode>('notebook');
   const [runtimeState, setRuntimeState] = useState<RuntimeState>({ phase: 'starting' });
+  const [files, setFiles] = useState<FileMeta[]>([]);
+  const [currentFile, setCurrentFile] = useState<FileMeta>();
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
-  // ——— script mode state ———
+  // ——— script state ———
   const [scriptChunks, setScriptChunks] = useState<OutputChunk[]>([]);
   const [scriptTruncated, setScriptTruncated] = useState(false);
   const scriptEditorRef = useRef<EditorHandle>();
-  const scriptCodeRef = useRef(STARTER_SCRIPT);
+  const scriptCodeRef = useRef('');
 
   // ——— notebook state ———
-  const [notebook, setNotebook] = useState<Notebook>(starterNotebook);
+  const [notebook, setNotebook] = useState<Notebook>({ name: '', cells: [] });
   const [generation, setGeneration] = useState(0); // bumps when a file is loaded
   const [runningCellId, setRunningCellId] = useState<string>();
   const execCounter = useRef(0);
@@ -47,7 +57,46 @@ export function App() {
   notebookRef.current = notebook;
   const runtimeStateRef = useRef(runtimeState);
   runtimeStateRef.current = runtimeState;
+  const currentFileRef = useRef(currentFile);
+  currentFileRef.current = currentFile;
 
+  const mode: 'notebook' | 'script' = currentFile?.kind === 'py' ? 'script' : 'notebook';
+
+  // ——— autosave ———
+  const saveTimer = useRef<ReturnType<typeof setTimeout>>();
+  const persistNow = useCallback(async () => {
+    const file = currentFileRef.current;
+    if (!file) return;
+    const content =
+      file.kind === 'ipynb'
+        ? serializeIpynb(notebookRef.current, runtimeStateRef.current.pythonVersion)
+        : scriptCodeRef.current;
+    const updated: WorkspaceFile = { ...file, content, updatedAt: Date.now() };
+    await filesStore.put(updated);
+    setFiles((prev) => {
+      const rest = prev.filter((f) => f.id !== file.id);
+      const { content: _c, ...meta } = updated;
+      return [meta, ...rest];
+    });
+  }, []);
+
+  const scheduleSave = useCallback(() => {
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => void persistNow(), 700);
+  }, [persistNow]);
+
+  // Notebook edits (cells, outputs, exec counts) all flow through setNotebook;
+  // persist a debounced snapshot after each change.
+  const firstNotebookRender = useRef(true);
+  useEffect(() => {
+    if (firstNotebookRender.current) {
+      firstNotebookRender.current = false;
+      return;
+    }
+    if (currentFileRef.current?.kind === 'ipynb') scheduleSave();
+  }, [notebook, scheduleSave]);
+
+  // ——— output plumbing ———
   const appendToScript = useCallback((kind: OutputChunk['kind'], text: string) => {
     setScriptChunks((prev) => {
       const { chunks, truncated } = appendChunk(prev, kind, text, 400_000);
@@ -136,7 +185,6 @@ export function App() {
     while (queueRef.current.length) {
       const next = queueRef.current.shift()!;
       if (startCell(next)) return;
-      // Cell vanished (deleted) or couldn't start — clear its pending marker.
       updateCell(next, (c) => (c.type === 'code' ? { ...c, execCount: null } : c));
     }
   }, [startCell, updateCell]);
@@ -188,6 +236,183 @@ export function App() {
     );
   }, [runtime, updateCell]);
 
+  // ——— file management ———
+  const openWorkspaceFile = useCallback((file: WorkspaceFile) => {
+    clearTimeout(saveTimer.current);
+    const { content, ...meta } = file;
+    setCurrentFile(meta);
+    if (file.kind === 'ipynb') {
+      let nb: Notebook;
+      try {
+        nb = parseIpynb(content, file.name);
+      } catch {
+        nb = { name: file.name, cells: [newCodeCell()] };
+      }
+      setNotebook(nb);
+      setGeneration((g) => g + 1);
+    } else {
+      scriptCodeRef.current = content;
+      setScriptChunks([]);
+      setScriptTruncated(false);
+    }
+    setDrawerOpen(false);
+  }, []);
+
+  const createFile = useCallback(
+    async (kind: 'ipynb' | 'py', name?: string, content?: string) => {
+      const taken = (await filesStore.list()).map((f) => f.name);
+      const file: WorkspaceFile = {
+        id: fileId(),
+        kind,
+        name: name ?? uniqueName(t('file.untitled'), kind, taken),
+        content:
+          content ??
+          (kind === 'ipynb'
+            ? serializeIpynb({ name: '', cells: starterNotebook().cells.slice(0, 1).concat(newCodeCell()) })
+            : STARTER_SCRIPT),
+        updatedAt: Date.now(),
+      };
+      await filesStore.put(file);
+      const { content: _c, ...meta } = file;
+      setFiles((prev) => [meta, ...prev]);
+      openWorkspaceFile(file);
+    },
+    [openWorkspaceFile],
+  );
+
+  // Boot: load the workspace; first visit gets the welcome notebook.
+  useEffect(() => {
+    void (async () => {
+      const list = await filesStore.list();
+      if (list.length === 0) {
+        const nb = starterNotebook();
+        const file: WorkspaceFile = {
+          id: fileId(),
+          kind: 'ipynb',
+          name: nb.name,
+          content: serializeIpynb(nb),
+          updatedAt: Date.now(),
+        };
+        await filesStore.put(file);
+        setFiles([{ id: file.id, kind: file.kind, name: file.name, updatedAt: file.updatedAt }]);
+        openWorkspaceFile(file);
+      } else {
+        setFiles(list.map(({ content: _c, ...meta }) => meta));
+        openWorkspaceFile(list[0]);
+      }
+    })();
+  }, [openWorkspaceFile]);
+
+  const openById = useCallback(
+    async (id: string) => {
+      await persistNow(); // don't lose pending edits of the file being left
+      const file = await filesStore.get(id);
+      if (file) openWorkspaceFile(file);
+    },
+    [openWorkspaceFile, persistNow],
+  );
+
+  const renameFile = useCallback(
+    async (id: string) => {
+      const file = await filesStore.get(id);
+      if (!file) return;
+      const entered = prompt(t('drawer.renamePrompt'), file.name)?.trim();
+      if (!entered || entered === file.name) return;
+      const name = entered.includes('.') ? entered : `${entered}.${file.kind}`;
+      await filesStore.put({ ...file, name, updatedAt: Date.now() });
+      setFiles((prev) => prev.map((f) => (f.id === id ? { ...f, name } : f)));
+      if (currentFileRef.current?.id === id) {
+        setCurrentFile((f) => (f ? { ...f, name } : f));
+        setNotebook((nb) => ({ ...nb, name }));
+      }
+    },
+    [],
+  );
+
+  const duplicateFile = useCallback(async (id: string) => {
+    const file = await filesStore.get(id);
+    if (!file) return;
+    const dot = file.name.lastIndexOf('.');
+    const base = dot > 0 ? file.name.slice(0, dot) : file.name;
+    const taken = (await filesStore.list()).map((f) => f.name);
+    const copy: WorkspaceFile = {
+      ...file,
+      id: fileId(),
+      name: uniqueName(`${base} (${t('drawer.copySuffix')})`, file.kind, taken).replace(
+        new RegExp(`\\.${file.kind}\\.${file.kind}$`),
+        `.${file.kind}`,
+      ),
+      updatedAt: Date.now(),
+    };
+    await filesStore.put(copy);
+    const { content: _c, ...meta } = copy;
+    setFiles((prev) => [meta, ...prev]);
+  }, []);
+
+  const deleteFile = useCallback(
+    async (id: string) => {
+      const file = files.find((f) => f.id === id);
+      if (!file || !confirm(t('drawer.deleteConfirm', { name: file.name }))) return;
+      await filesStore.remove(id);
+      const rest = files.filter((f) => f.id !== id);
+      setFiles(rest);
+      if (currentFileRef.current?.id === id) {
+        if (rest.length) await openById(rest[0].id);
+        else await createFile('ipynb');
+      }
+    },
+    [files, openById, createFile],
+  );
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const importDeviceFile = useCallback(
+    async (file: File) => {
+      const text = await file.text();
+      const kind: 'ipynb' | 'py' = file.name.endsWith('.py') ? 'py' : 'ipynb';
+      if (kind === 'ipynb') {
+        try {
+          parseIpynb(text, file.name);
+        } catch {
+          alert(t('error.badNotebook'));
+          return;
+        }
+      }
+      await persistNow();
+      await createFile(kind, file.name, text);
+    },
+    [createFile, persistNow],
+  );
+
+  const openSample = useCallback(
+    async (sample: SampleRef) => {
+      try {
+        const res = await fetch(new URL(`samples/${sample.path}`, document.baseURI));
+        if (!res.ok) return;
+        await persistNow();
+        await createFile('ipynb', sample.name, await res.text());
+      } catch {
+        // Offline before first cache — samples simply stay unavailable.
+      }
+    },
+    [createFile, persistNow],
+  );
+
+  const downloadFile = useCallback(() => {
+    const file = currentFileRef.current;
+    if (!file) return;
+    const isNb = file.kind === 'ipynb';
+    const text = isNb
+      ? serializeIpynb(notebookRef.current, runtimeStateRef.current.pythonVersion)
+      : scriptCodeRef.current;
+    const blob = new Blob([text], { type: isNb ? 'application/x-ipynb+json' : 'text/x-python' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = file.name;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }, []);
+
   // ——— notebook edits ———
   const cellActions = useMemo(
     () => ({
@@ -221,41 +446,6 @@ export function App() {
     }));
   }, []);
 
-  // ——— open / save ———
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const saveFile = useCallback(() => {
-    const isNb = mode === 'notebook';
-    const text = isNb
-      ? serializeIpynb(notebookRef.current, runtimeStateRef.current.pythonVersion)
-      : scriptCodeRef.current;
-    const name = isNb ? notebookRef.current.name : t('file.defaultScript');
-    const blob = new Blob([text], { type: isNb ? 'application/x-ipynb+json' : 'text/x-python' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = name;
-    a.click();
-    URL.revokeObjectURL(a.href);
-  }, [mode]);
-
-  const openFile = useCallback(
-    async (file: File) => {
-      const text = await file.text();
-      if (mode === 'notebook') {
-        try {
-          setNotebook(parseIpynb(text, file.name));
-          setGeneration((g) => g + 1);
-        } catch {
-          alert(t('error.badNotebook'));
-        }
-      } else {
-        scriptEditorRef.current?.setCode(text);
-        scriptCodeRef.current = text;
-      }
-    },
-    [mode],
-  );
-
   // Test/automation hook (also handy for classroom tooling).
   useEffect(() => {
     (window as unknown as Record<string, unknown>).__picopy = {
@@ -265,15 +455,12 @@ export function App() {
       },
       getCode: () => scriptCodeRef.current,
       run: runScript,
-      setMode,
-      loadIpynb: (json: string, name = 'test.ipynb') => {
-        setNotebook(parseIpynb(json, name));
-        setGeneration((g) => g + 1);
-      },
+      newScript: () => void createFile('py'),
+      loadIpynb: (json: string, name = 'test.ipynb') => void createFile('ipynb', name, json),
       exportIpynb: () => serializeIpynb(notebookRef.current, runtimeStateRef.current.pythonVersion),
       runAll,
     };
-  }, [runScript, runAll]);
+  }, [runScript, runAll, createFile]);
 
   const { phase } = runtimeState;
   const running = phase === 'running' || phase === 'awaiting-input';
@@ -288,29 +475,25 @@ export function App() {
   return (
     <>
       <header class="topbar">
+        <button
+          class="iconbtn"
+          title={t('drawer.title')}
+          aria-label={t('drawer.title')}
+          onClick={() => setDrawerOpen(true)}
+        >
+          ☰
+        </button>
         <div class="topbar__logo">
           <span class="topbar__mark" aria-hidden="true">
             Py
           </span>
           {t('app.name')}
         </div>
-        <span class="topbar__file">
-          {mode === 'notebook' ? notebook.name : t('file.defaultScript')}
-        </span>
-        <nav class="modeswitch" aria-label={t('mode.label')}>
-          <button
-            class={`modeswitch__opt ${mode === 'notebook' ? 'modeswitch__opt--on' : ''}`}
-            onClick={() => setMode('notebook')}
-          >
-            {t('mode.notebook')}
+        {currentFile && (
+          <button class="topbar__file" onClick={() => void renameFile(currentFile.id)} title={t('drawer.rename')}>
+            {currentFile.name}
           </button>
-          <button
-            class={`modeswitch__opt ${mode === 'script' ? 'modeswitch__opt--on' : ''}`}
-            onClick={() => setMode('script')}
-          >
-            {t('mode.script')}
-          </button>
-        </nav>
+        )}
       </header>
 
       <div class="actionbar">
@@ -336,21 +519,18 @@ export function App() {
             {t('action.runAll')}
           </button>
         )}
-        <button class="btn btn--ghost" onClick={() => fileInputRef.current?.click()}>
-          {t('action.open')}
-        </button>
-        <button class="btn btn--ghost" onClick={saveFile}>
-          {t('action.save')}
+        <button class="btn btn--ghost" onClick={downloadFile}>
+          {t('action.download')}
         </button>
         <input
           ref={fileInputRef}
           type="file"
-          accept={mode === 'notebook' ? '.ipynb' : '.py'}
+          accept=".ipynb,.py"
           hidden
           onChange={(e) => {
             const file = e.currentTarget.files?.[0];
             e.currentTarget.value = '';
-            if (file) void openFile(file);
+            if (file) void importDeviceFile(file);
           }}
         />
         <span
@@ -376,8 +556,23 @@ export function App() {
         </p>
       )}
 
-      {mode === 'script' ? (
+      <Drawer
+        open={drawerOpen}
+        files={files}
+        currentId={currentFile?.id}
+        onClose={() => setDrawerOpen(false)}
+        onOpenFile={(id) => void openById(id)}
+        onNew={(kind) => void createFile(kind)}
+        onRename={(id) => void renameFile(id)}
+        onDuplicate={(id) => void duplicateFile(id)}
+        onDelete={(id) => void deleteFile(id)}
+        onImport={() => fileInputRef.current?.click()}
+        onOpenSample={(s) => void openSample(s)}
+      />
+
+      {mode === 'script' && currentFile ? (
         <ScriptView
+          key={currentFile.id}
           initialCode={scriptCodeRef.current}
           chunks={scriptChunks}
           truncated={scriptTruncated}
@@ -387,7 +582,10 @@ export function App() {
             void runtime.provideStdin(value);
           }}
           onRunShortcut={runScript}
-          onChange={(code) => (scriptCodeRef.current = code)}
+          onChange={(code) => {
+            scriptCodeRef.current = code;
+            scheduleSave();
+          }}
           editorRef={scriptEditorRef}
         />
       ) : (

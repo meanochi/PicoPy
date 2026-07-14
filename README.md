@@ -19,7 +19,9 @@ See [PLAN.md](PLAN.md) for the full product and technical plan.
 - ✅ **Phase 2 — Notebook mode**: Colab-style code + text cells, shared
   variables, execution counters, Run all, markdown rendering (sanitized),
   `.ipynb` open/save interchangeable with Jupyter and Colab.
-- ⏳ Phase 3 — Files & persistence
+- ✅ **Phase 3 — Files & persistence**: IndexedDB workspace with autosave,
+  file drawer (new/rename/duplicate/delete), import from device, download,
+  bundled sample notebooks.
 - ⏳ Phase 4 — Offline PWA + GitHub Pages deployment
 - ⏳ Phase 5 — Google Drive integration
 - ⏳ Phase 6 — Polish (dark mode, shortcuts, a11y)

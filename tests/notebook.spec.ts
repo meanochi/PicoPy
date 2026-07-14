@@ -121,10 +121,12 @@ test('input() works inside a notebook cell', async ({ page }) => {
   await expect(page.getByTestId('cell-code').first()).toContainText('haha');
 });
 
-test('script mode still works via the mode switch', async ({ page }) => {
+test('script files still work alongside notebooks', async ({ page }) => {
   await page.goto('/');
   await waitForReady(page);
-  await page.getByRole('button', { name: 'Script' }).click();
+  await page.getByRole('button', { name: 'Files' }).click();
+  await page.getByRole('button', { name: '+ Script' }).click();
+  await expect(page.locator('.editor-host')).toBeVisible();
   await page.evaluate(() => {
     (window as never as { __picopy: { setCode(c: string): void } }).__picopy.setCode('print(2 ** 10)');
   });
