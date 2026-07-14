@@ -61,8 +61,9 @@ input:focus-visible {
 .topbar {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 18px;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 10px 14px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
 }
@@ -98,8 +99,9 @@ input:focus-visible {
 .actionbar {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px 18px 0;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  padding: 12px 14px 0;
   max-width: 1080px;
   width: 100%;
   margin: 0 auto;
@@ -112,7 +114,16 @@ input:focus-visible {
   padding: 0 20px;
   border-radius: 999px;
   font-weight: 600;
+  white-space: nowrap;
   transition: background 0.15s, opacity 0.15s;
+}
+@media (max-width: 560px) {
+  .btn {
+    padding: 0 14px;
+  }
+  .topbar__file {
+    order: 3;
+  }
 }
 .btn--run {
   background: var(--accent);
@@ -301,6 +312,243 @@ input:focus-visible {
   border-radius: var(--radius-sm);
   padding: 0 16px;
   font-weight: 600;
+}
+
+/* ————— Mode switch & ghost buttons ————— */
+.modeswitch {
+  margin-inline-start: auto;
+  display: inline-flex;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px;
+}
+.modeswitch__opt {
+  padding: 6px 16px;
+  border-radius: 999px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.modeswitch__opt--on {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.btn--ghost {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-weight: 600;
+}
+.btn--ghost:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+.iconbtn {
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 50%;
+  font-size: 18px;
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+}
+.iconbtn:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* ————— Notebook ————— */
+.workspace--notebook {
+  display: block;
+  max-width: 860px;
+}
+.notebook {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.cell {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.cell--running {
+  border-color: var(--accent);
+}
+.cell__toolbar {
+  position: absolute;
+  top: -14px;
+  inset-inline-end: 14px;
+  display: none;
+  gap: 2px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 6px;
+  box-shadow: var(--shadow);
+  z-index: 2;
+}
+.cell:hover .cell__toolbar,
+.cell:focus-within .cell__toolbar {
+  display: inline-flex;
+}
+@media (hover: none) {
+  .cell__toolbar {
+    display: inline-flex; /* touch: no hover, keep tools visible */
+  }
+}
+.cell__tool {
+  min-width: 34px;
+  min-height: 34px;
+  border-radius: 50%;
+  color: var(--muted);
+  font-size: 14px;
+  display: grid;
+  place-items: center;
+}
+.cell__tool:hover:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.cell__tool:disabled {
+  opacity: 0.3;
+}
+.cell__tool--danger:hover {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.cell__main {
+  display: flex;
+  align-items: flex-start;
+}
+.cell__gutter {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 4px 10px 10px;
+}
+.cell__run {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 13px;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.cell__run:hover {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.cell__count {
+  font-family: var(--font-code);
+  font-size: 11px;
+  color: var(--muted);
+  opacity: 0.8;
+}
+.cell__spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.cell__content {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px 8px 4px;
+}
+.cell__editor .cm-editor {
+  font-size: 14.5px;
+}
+.cell__editor .cm-content {
+  padding: 8px 0;
+}
+.cell__outputs {
+  margin-top: 6px;
+  border-top: 1px solid var(--border);
+}
+.cell__outputs .console {
+  padding: 10px 6px;
+  background: transparent;
+  max-height: 420px;
+}
+.console__result {
+  color: var(--text);
+  font-weight: 600;
+}
+.cell--md .cell__md {
+  padding: 6px 18px;
+  overflow-wrap: anywhere;
+}
+.cell__md > :first-child {
+  margin-top: 8px;
+}
+.cell__md > :last-child {
+  margin-bottom: 8px;
+}
+.cell__md h1,
+.cell__md h2,
+.cell__md h3 {
+  letter-spacing: -0.01em;
+}
+.cell__md code {
+  font-family: var(--font-code);
+  font-size: 0.9em;
+  background: var(--accent-soft);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+.cell__md pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  overflow-x: auto;
+}
+.cell__md pre code {
+  background: none;
+  padding: 0;
+}
+.cell__md a {
+  color: var(--accent);
+}
+.cell__md img {
+  max-width: 100%;
+}
+.cell__mdedit {
+  padding: 10px 14px;
+}
+.cell__ta {
+  width: 100%;
+  min-height: 64px;
+  resize: none;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--code-bg);
+  color: var(--text);
+  font-family: var(--font-code);
+  font-size: 14px;
+  line-height: 1.6;
+  padding: 10px 12px;
+}
+.notebook__add {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  padding: 6px 0 30px;
 }
 
 /* boot failure banner */

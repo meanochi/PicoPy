@@ -45,43 +45,70 @@ export interface EditorHandle {
   view: EditorView;
   getCode(): string;
   setCode(code: string): void;
+  destroy(): void;
+}
+
+export interface EditorOptions {
+  /** Mod+Enter (run in place). */
+  onRun?: () => void;
+  /** Shift+Enter (notebook: run and advance). */
+  onShiftEnter?: () => void;
+  onChange?: (code: string) => void;
+  /** Cells grow with content; the script editor fills its card. */
+  lineNumbers?: boolean;
 }
 
 export function createEditor(
   parent: HTMLElement,
   initialCode: string,
-  onRunShortcut: () => void,
+  opts: EditorOptions = {},
 ): EditorHandle {
   const readOnly = new Compartment();
+  const bindings = [];
+  if (opts.onRun) {
+    const onRun = opts.onRun;
+    bindings.push({
+      key: 'Mod-Enter',
+      run: () => {
+        onRun();
+        return true;
+      },
+    });
+  }
+  if (opts.onShiftEnter) {
+    const onShiftEnter = opts.onShiftEnter;
+    bindings.push({
+      key: 'Shift-Enter',
+      run: () => {
+        onShiftEnter();
+        return true;
+      },
+    });
+  }
   const view = new EditorView({
     parent,
     state: EditorState.create({
       doc: initialCode,
       extensions: [
-        lineNumbers(),
+        ...(opts.lineNumbers === false ? [] : [lineNumbers(), highlightActiveLineGutter()]),
         highlightActiveLine(),
-        highlightActiveLineGutter(),
         drawSelection(),
         history(),
         bracketMatching(),
         indentUnit.of('    '),
         python(),
         syntaxHighlighting(defaultHighlightStyle),
-        keymap.of([
-          {
-            key: 'Mod-Enter',
-            run: () => {
-              onRunShortcut();
-              return true;
-            },
-          },
-          indentWithTab,
-          ...defaultKeymap,
-          ...historyKeymap,
-        ]),
+        keymap.of([...bindings, indentWithTab, ...defaultKeymap, ...historyKeymap]),
         theme,
         readOnly.of([]),
         EditorView.lineWrapping,
+        ...(opts.onChange
+          ? [
+              EditorView.updateListener.of((u) => {
+                if (u.docChanged) opts.onChange!(u.state.doc.toString());
+              }),
+            ]
+          : []),
       ],
     }),
   });
@@ -90,5 +117,6 @@ export function createEditor(
     getCode: () => view.state.doc.toString(),
     setCode: (code) =>
       view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: code } }),
+    destroy: () => view.destroy(),
   };
 }

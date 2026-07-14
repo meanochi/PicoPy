@@ -16,7 +16,9 @@ See [PLAN.md](PLAN.md) for the full product and technical plan.
 - ✅ **Phase 1 — Script mode**: editor (CodeMirror 6), Run/Stop, streaming
   console, working `input()`, beginner-friendly tracebacks, fresh globals per
   run.
-- ⏳ Phase 2 — Notebook mode (`.ipynb`, Colab-style cells)
+- ✅ **Phase 2 — Notebook mode**: Colab-style code + text cells, shared
+  variables, execution counters, Run all, markdown rendering (sanitized),
+  `.ipynb` open/save interchangeable with Jupyter and Colab.
 - ⏳ Phase 3 — Files & persistence
 - ⏳ Phase 4 — Offline PWA + GitHub Pages deployment
 - ⏳ Phase 5 — Google Drive integration

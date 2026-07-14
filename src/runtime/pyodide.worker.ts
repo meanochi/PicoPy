@@ -113,24 +113,45 @@ function cleanTraceback(raw: string): PythonErrorInfo {
   return { traceback, summary, line };
 }
 
+// Notebook cells share this namespace so they see each other's variables.
+// It lives only as long as the worker: Restart/Stop reboots into a clean one.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let sharedNs: any;
+
 async function run(msg: RunMessage) {
-  let ns: { destroy(): void } | undefined;
-  try {
-    // Fresh globals per run: re-running a script behaves like running a file,
-    // with no leftover variables from the previous run to confuse beginners.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let ns: any;
+  if (msg.namespace === 'shared') {
+    sharedNs ??= pyodide.globals.get('dict')();
+    ns = sharedNs;
+  } else {
     ns = pyodide.globals.get('dict')();
-    await pyodide.runPythonAsync(msg.code, { globals: ns });
+  }
+  try {
+    const value = await pyodide.runPythonAsync(msg.code, { globals: ns });
+    let result: string | undefined;
+    if (value !== undefined) {
+      const repr = pyodide.globals.get('repr');
+      try {
+        result = repr(value);
+      } finally {
+        repr.destroy();
+        if (value && typeof value.destroy === 'function') value.destroy();
+      }
+    }
     flushAll();
-    post({ type: 'done', id: msg.id, ok: true });
+    post({ type: 'done', id: msg.id, ok: true, result });
   } catch (err) {
     flushAll();
     const raw = err instanceof Error ? err.message : String(err);
     post({ type: 'done', id: msg.id, ok: false, error: cleanTraceback(raw) });
   } finally {
-    try {
-      ns?.destroy();
-    } catch {
-      // Leaked namespace is harmless; the next run gets a fresh one anyway.
+    if (msg.namespace === 'fresh') {
+      try {
+        ns.destroy();
+      } catch {
+        // Leaked namespace is harmless; the next run gets a fresh one anyway.
+      }
     }
   }
 }

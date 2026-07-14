@@ -20,7 +20,7 @@ export interface RuntimeState {
 export interface RuntimeEvents {
   onState(state: RuntimeState): void;
   onOutput(kind: 'stdout' | 'stderr', text: string): void;
-  onRunDone(ok: boolean, error?: PythonErrorInfo): void;
+  onRunDone(id: number, ok: boolean, error?: PythonErrorInfo, result?: string): void;
 }
 
 export class Runtime {
@@ -42,16 +42,26 @@ export class Runtime {
     this.spawn();
   }
 
-  run(code: string): void {
-    if (this.state.phase !== 'ready' || !this.worker) return;
+  /** Queue code for execution; returns the run id echoed back in onRunDone. */
+  run(code: string, namespace: 'fresh' | 'shared'): number | undefined {
+    if (this.state.phase !== 'ready' || !this.worker) return undefined;
     this.runId += 1;
     this.setState({ ...this.state, phase: 'running' });
-    this.worker.postMessage({ type: 'run', id: this.runId, code });
+    this.worker.postMessage({ type: 'run', id: this.runId, code, namespace });
+    return this.runId;
   }
 
   /** Terminate the runaway worker (releasing any blocked input()) and reboot. */
   async stop(): Promise<void> {
     if (this.state.phase !== 'running' && this.state.phase !== 'awaiting-input') return;
+    await this.restart(true);
+  }
+
+  /**
+   * Kill the worker and boot a fresh one — clears all notebook variables.
+   * When interrupting a run, report it as not-ok so the UI can say "stopped".
+   */
+  async restart(reportInterrupted = false): Promise<void> {
     this.worker?.terminate();
     this.worker = undefined;
     try {
@@ -59,7 +69,7 @@ export class Runtime {
     } catch {
       // No service worker — nothing was blocked on stdin anyway.
     }
-    this.events.onRunDone(false);
+    if (reportInterrupted) this.events.onRunDone(this.runId, false);
     this.setState({ phase: 'starting', pythonVersion: this.state.pythonVersion });
     this.spawn();
   }
@@ -107,7 +117,7 @@ export class Runtime {
         break;
       case 'done':
         this.setState({ ...this.state, phase: 'ready' });
-        this.events.onRunDone(msg.ok, msg.error);
+        this.events.onRunDone(msg.id, msg.ok, msg.error, msg.result);
         break;
     }
   }

@@ -14,6 +14,12 @@ export interface RunMessage {
   type: 'run';
   id: number;
   code: string;
+  /**
+   * 'fresh' runs in a throwaway namespace (script semantics: re-running a file
+   * starts clean). 'shared' runs in a namespace that persists across runs
+   * (notebook semantics: cells see each other's variables).
+   */
+  namespace: 'fresh' | 'shared';
 }
 
 export type WorkerIn = InitMessage | RunMessage;
@@ -33,4 +39,11 @@ export type WorkerOut =
   | { type: 'boot-error'; message: string }
   | { type: 'stream'; stream: 'stdout' | 'stderr'; text: string }
   | { type: 'stdin-request' }
-  | { type: 'done'; id: number; ok: boolean; error?: PythonErrorInfo };
+  | {
+      type: 'done';
+      id: number;
+      ok: boolean;
+      error?: PythonErrorInfo;
+      /** repr() of the last expression, Jupyter-style, if there was one. */
+      result?: string;
+    };
