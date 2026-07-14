@@ -21,6 +21,8 @@ export interface RuntimeEvents {
   onState(state: RuntimeState): void;
   onOutput(kind: 'stdout' | 'stderr', text: string): void;
   onRunDone(id: number, ok: boolean, error?: PythonErrorInfo, result?: string): void;
+  /** A new app version was installed by the service worker. */
+  onAppUpdate?(): void;
 }
 
 export class Runtime {
@@ -38,7 +40,7 @@ export class Runtime {
 
   async start(): Promise<void> {
     this.setState({ phase: 'starting', pythonVersion: this.state.pythonVersion });
-    await ensureServiceWorker();
+    await ensureServiceWorker(this.events.onAppUpdate);
     this.spawn();
   }
 

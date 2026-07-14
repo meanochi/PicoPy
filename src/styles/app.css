@@ -661,6 +661,31 @@ input:focus-visible {
   }
 }
 
+/* update toast */
+.toast {
+  position: fixed;
+  bottom: 18px;
+  inset-inline-start: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--text);
+  color: var(--surface);
+  border-radius: 999px;
+  padding: 10px 12px 10px 20px;
+  font-size: 14px;
+  box-shadow: 0 8px 30px -6px rgb(23 43 88 / 0.35);
+  z-index: 30;
+}
+.toast__action {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-radius: 999px;
+  padding: 7px 16px;
+  font-weight: 600;
+}
+
 /* boot failure banner */
 .banner-error {
   margin: 0 18px;

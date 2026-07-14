@@ -22,7 +22,9 @@ See [PLAN.md](PLAN.md) for the full product and technical plan.
 - ✅ **Phase 3 — Files & persistence**: IndexedDB workspace with autosave,
   file drawer (new/rename/duplicate/delete), import from device, download,
   bundled sample notebooks.
-- ⏳ Phase 4 — Offline PWA + GitHub Pages deployment
+- ✅ **Phase 4 — Offline PWA + deployment**: installable to home screen,
+  versioned precache of the whole app + Python runtime (works fully offline
+  after first visit), update-ready toast, GitHub Actions CI + Pages deploy.
 - ⏳ Phase 5 — Google Drive integration
 - ⏳ Phase 6 — Polish (dark mode, shortcuts, a11y)
 

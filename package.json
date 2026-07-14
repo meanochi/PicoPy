@@ -6,7 +6,7 @@
   "description": "A featherweight Python IDE that runs anywhere, works offline, and speaks Jupyter.",
   "scripts": {
     "dev": "vite",
-    "build": "npm run vendor:pyodide && tsc --noEmit && vite build",
+    "build": "npm run vendor:pyodide && tsc --noEmit && vite build && node scripts/build-sw.mjs",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "vendor:pyodide": "node scripts/vendor-pyodide.mjs",

@@ -38,6 +38,7 @@ export function App() {
   const [files, setFiles] = useState<FileMeta[]>([]);
   const [currentFile, setCurrentFile] = useState<FileMeta>();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [updateReady, setUpdateReady] = useState(false);
 
   // ——— script state ———
   const [scriptChunks, setScriptChunks] = useState<OutputChunk[]>([]);
@@ -138,6 +139,7 @@ export function App() {
     () =>
       new Runtime({
         onState: setRuntimeState,
+        onAppUpdate: () => setUpdateReady(true),
         onOutput: (kind, text) => appendOutput(kind === 'stderr' ? 'stream-err' : 'stream-out', text),
         onRunDone: (_id, ok, error, result) => {
           const target = targetRef.current;
@@ -548,6 +550,15 @@ export function App() {
           ↻
         </button>
       </div>
+
+      {updateReady && (
+        <div class="toast" role="status">
+          {t('update.available')}
+          <button class="toast__action" onClick={() => location.reload()}>
+            {t('update.reload')}
+          </button>
+        </div>
+      )}
 
       {phase === 'failed' && (
         <p class="banner-error">
