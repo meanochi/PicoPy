@@ -1,0 +1,31 @@
+{
+  "name": "picopy",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "A featherweight Python IDE that runs anywhere, works offline, and speaks Jupyter.",
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run vendor:pyodide && tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "vendor:pyodide": "node scripts/vendor-pyodide.mjs",
+    "postinstall": "node scripts/vendor-pyodide.mjs",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@codemirror/commands": "^6.8.1",
+    "@codemirror/lang-python": "^6.2.1",
+    "@codemirror/language": "^6.11.0",
+    "@codemirror/state": "^6.5.2",
+    "@codemirror/view": "^6.38.0",
+    "preact": "^10.26.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.54.0",
+    "@preact/preset-vite": "^2.10.0",
+    "pyodide": "^314.0.2",
+    "typescript": "^5.8.0",
+    "vite": "^7.0.0"
+  }
+}
