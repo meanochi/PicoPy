@@ -25,7 +25,10 @@ See [PLAN.md](PLAN.md) for the full product and technical plan.
 - ✅ **Phase 4 — Offline PWA + deployment**: installable to home screen,
   versioned precache of the whole app + Python runtime (works fully offline
   after first visit), update-ready toast, GitHub Actions CI + Pages deploy.
-- ⏳ Phase 5 — Google Drive integration
+- ✅ **Phase 5 — Google Drive** (optional): connect with Google, save/open
+  notebooks in Drive via the minimal-trust `drive.file` scope, sync badges.
+  Hidden entirely until an OAuth client id is configured — see
+  [docs/drive-setup.md](docs/drive-setup.md).
 - ⏳ Phase 6 — Polish (dark mode, shortcuts, a11y)
 
 ## Development

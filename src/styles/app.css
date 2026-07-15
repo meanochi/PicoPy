@@ -661,6 +661,23 @@ input:focus-visible {
   }
 }
 
+/* drive sync state */
+.drawer__cloud {
+  flex: none;
+  font-size: 12px;
+  color: var(--accent);
+  opacity: 0.85;
+}
+.drive-state {
+  margin: 0;
+  padding: 0 18px 6px;
+  font-size: 13px;
+  color: var(--ok);
+}
+.drive-state--dirty {
+  color: var(--muted);
+}
+
 /* update toast */
 .toast {
   position: fixed;
