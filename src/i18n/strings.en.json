@@ -58,5 +58,6 @@
   "drive.linked": "Saved to Google Drive",
   "drive.upToDate": "☁ Up to date on Drive",
   "drive.unsavedChanges": "● Changes not yet saved to Drive",
-  "drive.error": "Google Drive: {message}"
+  "drive.error": "Google Drive: {message}",
+  "theme.toggle": "Switch light/dark theme"
 }

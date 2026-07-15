@@ -16,6 +16,7 @@ import { Runtime, type RuntimeState } from '../runtime/manager';
 import { Drawer, type DriveStatus, type SampleRef } from './Drawer';
 import { appendChunk } from './output';
 import { ScriptView } from './ScriptView';
+import { effectiveDark, toggleTheme } from './theme';
 
 const STARTER_SCRIPT = `# A Python script: it runs top to bottom, like a recipe.
 
@@ -40,6 +41,7 @@ export function App() {
   const [currentFile, setCurrentFile] = useState<FileMeta>();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [updateReady, setUpdateReady] = useState(false);
+  const [darkTheme, setDarkTheme] = useState(effectiveDark);
 
   // ——— script state ———
   const [scriptChunks, setScriptChunks] = useState<OutputChunk[]>([]);
@@ -560,6 +562,20 @@ export function App() {
     }));
   }, []);
 
+  // Ctrl/Cmd+S: students press it out of habit — snapshot the workspace
+  // instead of showing the browser's save-page dialog. (Autosave already
+  // covers them; this is about not scaring anyone.)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        void persistNow();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [persistNow]);
+
   // Test/automation hook (also handy for classroom tooling).
   useEffect(() => {
     (window as unknown as Record<string, unknown>).__picopy = {
@@ -608,6 +624,14 @@ export function App() {
             {currentFile.name}
           </button>
         )}
+        <button
+          class="iconbtn topbar__theme"
+          title={t('theme.toggle')}
+          aria-label={t('theme.toggle')}
+          onClick={() => setDarkTheme(toggleTheme())}
+        >
+          {darkTheme ? '☀' : '☾'}
+        </button>
       </header>
 
       <div class="actionbar">
@@ -649,6 +673,8 @@ export function App() {
         />
         <span
           class={`chip chip--${phase}`}
+          role="status"
+          aria-live="polite"
           title={
             runtimeState.pythonVersion
               ? t('status.pythonTitle', { version: runtimeState.pythonVersion })

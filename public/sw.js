@@ -108,8 +108,11 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     (async () => {
       // App navigations serve the cached shell so the app opens offline.
+      // ignoreVary: hosts that send `Vary: Origin` (vite preview, some CDNs)
+      // would otherwise fail matches for crossorigin-attributed assets, whose
+      // page requests carry an Origin header while precache fetches don't.
       const key = event.request.mode === 'navigate' ? scopeUrl('index.html') : event.request;
-      const cached = await caches.match(key, { ignoreSearch: true });
+      const cached = await caches.match(key, { ignoreSearch: true, ignoreVary: true });
       if (cached) return cached;
       const resp = await fetch(event.request);
       // Backfill precache entries that install-time fetches missed.

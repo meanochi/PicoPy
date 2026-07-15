@@ -29,7 +29,9 @@ See [PLAN.md](PLAN.md) for the full product and technical plan.
   notebooks in Drive via the minimal-trust `drive.file` scope, sync badges.
   Hidden entirely until an OAuth client id is configured — see
   [docs/drive-setup.md](docs/drive-setup.md).
-- ⏳ Phase 6 — Polish (dark mode, shortcuts, a11y)
+- ✅ **Phase 6 — Polish**: system-aware dark mode with remembered toggle,
+  Ctrl+S snapshot (no browser save dialog), live-region status chip,
+  touch-friendly toolbars.
 
 ## Development
 
