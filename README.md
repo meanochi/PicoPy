@@ -32,6 +32,11 @@ See [PLAN.md](PLAN.md) for the full product and technical plan.
 - ✅ **Phase 6 — Polish**: system-aware dark mode with remembered toggle,
   Ctrl+S snapshot (no browser save dialog), live-region status chip,
   touch-friendly toolbars.
+- ✅ **File handling**: autosave to the local workspace (IndexedDB, ~0.7s
+  debounce); once installed, PicoPy receives files via Android's Share sheet
+  and desktop double-click/"Open with" (File Handling API). True Android
+  "Open with" default-app registration needs a native wrapper — not done, see
+  the note at the bottom of this section.
 
 ## Development
 
