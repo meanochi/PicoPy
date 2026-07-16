@@ -4,7 +4,7 @@ async function waitForReady(page: Page) {
   await expect(page.locator('.chip')).toContainText('Ready', { timeout: 60_000 });
 }
 
-test('opens a file shared via the Android share target', async ({ page, context }) => {
+test('opens a file shared via the Android share target', async ({ page }) => {
   // First visit so the service worker is registered and controlling the page
   // (the share-target POST is intercepted by the SW, same as on a real device).
   await page.goto('/');
