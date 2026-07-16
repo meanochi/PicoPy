@@ -86,6 +86,32 @@ self.addEventListener('message', (event) => {
   );
 });
 
+/**
+ * Android's Share sheet (see share_target in manifest.webmanifest) POSTs the
+ * shared file here. There's no server to handle the POST, so we stash the
+ * content in a scratch cache and redirect to the app shell with a marker;
+ * consumeSharedFile() in the app (src/files/shareTarget.ts) reads it once.
+ */
+async function handleShareTarget(request) {
+  try {
+    const formData = await request.formData();
+    const file = formData.get('file');
+    if (file && typeof file.text === 'function') {
+      const content = await file.text();
+      const cache = await caches.open('picopy-share');
+      await cache.put(
+        'pending-share',
+        new Response(JSON.stringify({ name: file.name || 'shared.py', content }), {
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    }
+  } catch {
+    // Malformed share payload — the app just opens normally.
+  }
+  return Response.redirect(scopeUrl('?shared=1'), 303);
+}
+
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     (async () => {
@@ -102,6 +128,10 @@ self.addEventListener('fetch', (event) => {
   const marker = url.pathname.lastIndexOf('/__picopy__/');
   if (marker !== -1) {
     handleStdin(event, url.pathname.slice(marker + '/__picopy__/'.length));
+    return;
+  }
+  if (event.request.method === 'POST' && url.pathname.endsWith('/share-target/')) {
+    event.respondWith(handleShareTarget(event.request));
     return;
   }
   if (event.request.method !== 'GET' || url.origin !== self.location.origin) return;

@@ -13,6 +13,8 @@ import {
 } from '../notebook/model';
 import { NotebookView } from '../notebook/NotebookView';
 import { Runtime, type RuntimeState } from '../runtime/manager';
+import { onFileLaunch } from '../files/launchQueue';
+import { consumeSharedFile } from '../files/shareTarget';
 import { Drawer, type DriveStatus, type SampleRef } from './Drawer';
 import { appendChunk } from './output';
 import { ScriptView } from './ScriptView';
@@ -381,23 +383,39 @@ export function App() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const importDeviceFile = useCallback(
-    async (file: File) => {
-      const text = await file.text();
-      const kind: 'ipynb' | 'py' = file.name.endsWith('.py') ? 'py' : 'ipynb';
+  // Core of "bring this file into the workspace and open it" — shared by the
+  // device file picker, files shared in from Android's Share sheet, and
+  // files launched by double-clicking on desktop.
+  const importFileContent = useCallback(
+    async (name: string, text: string) => {
+      const kind: 'ipynb' | 'py' = name.endsWith('.py') ? 'py' : 'ipynb';
       if (kind === 'ipynb') {
         try {
-          parseIpynb(text, file.name);
+          parseIpynb(text, name);
         } catch {
           alert(t('error.badNotebook'));
           return;
         }
       }
       await persistNow();
-      await createFile(kind, file.name, text);
+      await createFile(kind, name, text);
     },
     [createFile, persistNow],
   );
+
+  const importDeviceFile = useCallback(
+    async (file: File) => importFileContent(file.name, await file.text()),
+    [importFileContent],
+  );
+
+  // Pick up a file shared via Android's Share sheet, or one launched by
+  // double-clicking a .py/.ipynb file with PicoPy installed on desktop.
+  useEffect(() => {
+    void consumeSharedFile().then((shared) => {
+      if (shared) void importFileContent(shared.name, shared.content);
+    });
+    onFileLaunch((name, content) => void importFileContent(name, content));
+  }, [importFileContent]);
 
   const openSample = useCallback(
     async (sample: SampleRef) => {
