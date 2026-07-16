@@ -1,6 +1,8 @@
-// Side drawer: the local workspace file list, new-file actions, and bundled
-// sample notebooks. Overlays content on phones, docks on wide screens.
+// Side drawer: the local workspace file list, new-file actions, bundled
+// sample notebooks, and the optional Google Drive section. Overlays content
+// on phones, docks on wide screens.
 import { useEffect, useState } from 'preact/hooks';
+import type { DriveFileMeta } from '../drive/client';
 import type { WorkspaceFile } from '../files/store';
 import { t } from '../i18n';
 
@@ -8,6 +10,8 @@ export interface SampleRef {
   name: string;
   path: string;
 }
+
+export type DriveStatus = 'unavailable' | 'disconnected' | 'connecting' | 'connected';
 
 interface Props {
   open: boolean;
@@ -21,6 +25,18 @@ interface Props {
   onDelete(id: string): void;
   onImport(): void;
   onOpenSample(sample: SampleRef): void;
+  drive: {
+    status: DriveStatus;
+    busy: boolean;
+    files: DriveFileMeta[];
+    /** Current file has edits newer than its last Drive upload. */
+    currentDirty: boolean;
+    currentLinked: boolean;
+    onConnect(): void;
+    onSignOut(): void;
+    onSaveCurrent(): void;
+    onOpenDriveFile(meta: DriveFileMeta): void;
+  };
 }
 
 export function Drawer(props: Props) {
@@ -63,6 +79,11 @@ export function Drawer(props: Props) {
                   {f.kind === 'ipynb' ? '📓' : '🐍'}
                 </span>
                 <span class="drawer__name">{f.name}</span>
+                {f.driveId && (
+                  <span class="drawer__cloud" title={t('drive.linked')} aria-label={t('drive.linked')}>
+                    ☁
+                  </span>
+                )}
               </button>
               <span class="drawer__tools">
                 <button class="cell__tool" title={t('drawer.rename')} aria-label={`${t('drawer.rename')} ${f.name}`} onClick={() => props.onRename(f.id)}>
@@ -97,7 +118,58 @@ export function Drawer(props: Props) {
             </ul>
           </>
         )}
+        <DriveSection drive={props.drive} />
       </aside>
+    </>
+  );
+}
+
+function DriveSection({ drive }: { drive: Props['drive'] }) {
+  if (drive.status === 'unavailable') return null;
+  return (
+    <>
+      <div class="drawer__head drawer__head--sub">
+        <span class="drawer__title">{t('drive.title')}</span>
+      </div>
+      {drive.status !== 'connected' ? (
+        <div class="drawer__actions">
+          <button
+            class="btn btn--ghost btn--small"
+            disabled={drive.status === 'connecting'}
+            onClick={drive.onConnect}
+          >
+            {drive.status === 'connecting' ? t('drive.connecting') : t('drive.connect')}
+          </button>
+        </div>
+      ) : (
+        <>
+          <div class="drawer__actions">
+            <button class="btn btn--ghost btn--small" disabled={drive.busy} onClick={drive.onSaveCurrent}>
+              ☁ {t('drive.saveCurrent')}
+            </button>
+            <button class="btn btn--ghost btn--small" onClick={drive.onSignOut}>
+              {t('drive.signOut')}
+            </button>
+          </div>
+          {drive.currentLinked && (
+            <p class={`drive-state ${drive.currentDirty ? 'drive-state--dirty' : ''}`}>
+              {drive.currentDirty ? t('drive.unsavedChanges') : t('drive.upToDate')}
+            </p>
+          )}
+          <ul class="drawer__list">
+            {drive.files.map((f) => (
+              <li key={f.id} class="drawer__item">
+                <button class="drawer__file" onClick={() => drive.onOpenDriveFile(f)}>
+                  <span class="drawer__icon" aria-hidden="true">
+                    ☁
+                  </span>
+                  <span class="drawer__name">{f.name}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
     </>
   );
 }

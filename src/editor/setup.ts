@@ -11,6 +11,7 @@ import {
   syntaxHighlighting,
 } from '@codemirror/language';
 import { Compartment, EditorState } from '@codemirror/state';
+import { oneDarkHighlightStyle } from '@codemirror/theme-one-dark';
 import {
   EditorView,
   drawSelection,
@@ -19,6 +20,21 @@ import {
   keymap,
   lineNumbers,
 } from '@codemirror/view';
+
+// Syntax colors can't be driven by CSS variables, so each editor keeps its
+// highlight style in a compartment and setEditorsDark() swaps them all live.
+const registry = new Map<EditorView, Compartment>();
+let currentDark = false;
+
+const highlighter = (dark: boolean) =>
+  syntaxHighlighting(dark ? oneDarkHighlightStyle : defaultHighlightStyle);
+
+export function setEditorsDark(dark: boolean): void {
+  currentDark = dark;
+  for (const [view, compartment] of registry) {
+    view.dispatch({ effects: compartment.reconfigure(highlighter(dark)) });
+  }
+}
 
 const theme = EditorView.theme({
   '&': { backgroundColor: 'transparent', height: '100%' },
@@ -64,6 +80,7 @@ export function createEditor(
   opts: EditorOptions = {},
 ): EditorHandle {
   const readOnly = new Compartment();
+  const highlight = new Compartment();
   const bindings = [];
   if (opts.onRun) {
     const onRun = opts.onRun;
@@ -97,7 +114,7 @@ export function createEditor(
         bracketMatching(),
         indentUnit.of('    '),
         python(),
-        syntaxHighlighting(defaultHighlightStyle),
+        highlight.of(highlighter(currentDark)),
         keymap.of([...bindings, indentWithTab, ...defaultKeymap, ...historyKeymap]),
         theme,
         readOnly.of([]),
@@ -112,11 +129,15 @@ export function createEditor(
       ],
     }),
   });
+  registry.set(view, highlight);
   return {
     view,
     getCode: () => view.state.doc.toString(),
     setCode: (code) =>
       view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: code } }),
-    destroy: () => view.destroy(),
+    destroy: () => {
+      registry.delete(view);
+      view.destroy();
+    },
   };
 }

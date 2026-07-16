@@ -49,5 +49,15 @@
   "input.send": "Send",
   "error.badNotebook": "That file doesn't look like a Jupyter notebook (.ipynb).",
   "update.available": "A new version of PicoPy is ready.",
-  "update.reload": "Reload"
+  "update.reload": "Reload",
+  "drive.title": "Google Drive",
+  "drive.connect": "Connect Google Drive",
+  "drive.connecting": "Connecting…",
+  "drive.signOut": "Disconnect",
+  "drive.saveCurrent": "Save current file to Drive",
+  "drive.linked": "Saved to Google Drive",
+  "drive.upToDate": "☁ Up to date on Drive",
+  "drive.unsavedChanges": "● Changes not yet saved to Drive",
+  "drive.error": "Google Drive: {message}",
+  "theme.toggle": "Switch light/dark theme"
 }

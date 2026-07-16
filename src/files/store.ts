@@ -9,6 +9,10 @@ export interface WorkspaceFile {
   kind: 'ipynb' | 'py';
   content: string;
   updatedAt: number;
+  /** Google Drive file id, when this file is linked to Drive. */
+  driveId?: string;
+  /** When the content was last uploaded to Drive (compare with updatedAt). */
+  driveSavedAt?: number;
 }
 
 export function fileId(): string {

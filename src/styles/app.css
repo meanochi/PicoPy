@@ -21,6 +21,29 @@
   --font-code: ui-monospace, 'SF Mono', 'Cascadia Mono', 'Roboto Mono', Menlo, Consolas, monospace;
 }
 
+:root[data-theme='dark'] {
+  --bg: #11151d;
+  --surface: #1a212c;
+  --surface-2: #161d27;
+  --text: #e7ecf5;
+  --muted: #97a5bd;
+  --accent: #6595ff;
+  --accent-hover: #7fa7ff;
+  --accent-soft: #223252;
+  --on-accent: #0d1320;
+  --border: #2a3446;
+  --danger: #ff7d92;
+  --danger-soft: #3a2230;
+  --ok: #4cc98a;
+  --code-bg: #151c26;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 6px 24px -8px rgb(0 0 0 / 0.4);
+}
+:root[data-theme='dark'] .toast {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
 /* ————— Base ————— */
 * {
   box-sizing: border-box;
@@ -93,6 +116,10 @@ input:focus-visible {
   border-radius: 999px;
   background: var(--surface-2);
   border: 1px solid var(--border);
+}
+.topbar__theme {
+  margin-inline-start: auto;
+  font-size: 16px;
 }
 
 /* ————— Action bar ————— */
@@ -659,6 +686,23 @@ input:focus-visible {
   .drawer__tools {
     display: inline-flex;
   }
+}
+
+/* drive sync state */
+.drawer__cloud {
+  flex: none;
+  font-size: 12px;
+  color: var(--accent);
+  opacity: 0.85;
+}
+.drive-state {
+  margin: 0;
+  padding: 0 18px 6px;
+  font-size: 13px;
+  color: var(--ok);
+}
+.drive-state--dirty {
+  color: var(--muted);
 }
 
 /* update toast */

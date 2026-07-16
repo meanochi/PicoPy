@@ -42,14 +42,46 @@ const CACHE_NAME = 'picopy-' + VERSION;
 
 const scopeUrl = (path) => new URL(path, self.registration.scope).href;
 
+/**
+ * Resilient precache: fetch each file individually with one retry and
+ * tolerate stragglers instead of atomic addAll (where one flaky fetch fails
+ * the whole install — fatal on unreliable networks). Anything missed here is
+ * backfilled by the fetch handler the next time it's requested online.
+ */
+async function precacheAll() {
+  if (!PRECACHE.length) return;
+  const cache = await caches.open(CACHE_NAME);
+  await Promise.all(
+    PRECACHE.map(async (path) => {
+      const url = scopeUrl(path);
+      if (await cache.match(url)) return;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const resp = await fetch(url, { cache: 'no-cache' });
+          if (resp.ok) {
+            await cache.put(url, resp);
+            return;
+          }
+        } catch {
+          // Retry once; then leave it for on-demand backfill.
+        }
+      }
+    }),
+  );
+}
+
 self.addEventListener('install', (event) => {
+  event.waitUntil(precacheAll().then(() => self.skipWaiting()));
+});
+
+// Lets the app (and tests) ask how complete the offline cache is.
+self.addEventListener('message', (event) => {
+  if (event.data !== 'picopy-precache-status') return;
   event.waitUntil(
     (async () => {
-      if (PRECACHE.length) {
-        const cache = await caches.open(CACHE_NAME);
-        await cache.addAll(PRECACHE.map(scopeUrl));
-      }
-      await self.skipWaiting();
+      const cache = await caches.open(CACHE_NAME);
+      const cached = (await cache.keys()).length;
+      event.source?.postMessage({ type: 'precache-status', cached, total: PRECACHE.length });
     })(),
   );
 });
@@ -76,9 +108,19 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     (async () => {
       // App navigations serve the cached shell so the app opens offline.
+      // ignoreVary: hosts that send `Vary: Origin` (vite preview, some CDNs)
+      // would otherwise fail matches for crossorigin-attributed assets, whose
+      // page requests carry an Origin header while precache fetches don't.
       const key = event.request.mode === 'navigate' ? scopeUrl('index.html') : event.request;
-      const cached = await caches.match(key, { ignoreSearch: true });
-      return cached ?? fetch(event.request);
+      const cached = await caches.match(key, { ignoreSearch: true, ignoreVary: true });
+      if (cached) return cached;
+      const resp = await fetch(event.request);
+      // Backfill precache entries that install-time fetches missed.
+      if (resp.ok && PRECACHE.some((p) => scopeUrl(p) === url.href)) {
+        const cache = await caches.open(CACHE_NAME);
+        await cache.put(url.href, resp.clone());
+      }
+      return resp;
     })(),
   );
 });

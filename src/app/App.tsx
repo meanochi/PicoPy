@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { type DriveFileMeta, getDriveTransport } from '../drive/client';
 import type { EditorHandle } from '../editor/setup';
 import { type WorkspaceFile, fileId, filesStore } from '../files/store';
 import { t } from '../i18n';
@@ -12,9 +13,10 @@ import {
 } from '../notebook/model';
 import { NotebookView } from '../notebook/NotebookView';
 import { Runtime, type RuntimeState } from '../runtime/manager';
-import { Drawer, type SampleRef } from './Drawer';
+import { Drawer, type DriveStatus, type SampleRef } from './Drawer';
 import { appendChunk } from './output';
 import { ScriptView } from './ScriptView';
+import { effectiveDark, toggleTheme } from './theme';
 
 const STARTER_SCRIPT = `# A Python script: it runs top to bottom, like a recipe.
 
@@ -39,6 +41,7 @@ export function App() {
   const [currentFile, setCurrentFile] = useState<FileMeta>();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [updateReady, setUpdateReady] = useState(false);
+  const [darkTheme, setDarkTheme] = useState(effectiveDark);
 
   // ——— script state ———
   const [scriptChunks, setScriptChunks] = useState<OutputChunk[]>([]);
@@ -72,7 +75,10 @@ export function App() {
       file.kind === 'ipynb'
         ? serializeIpynb(notebookRef.current, runtimeStateRef.current.pythonVersion)
         : scriptCodeRef.current;
-    const updated: WorkspaceFile = { ...file, content, updatedAt: Date.now() };
+    // Merge over the stored record: fields written by other flows since this
+    // file was opened (e.g. Drive linkage) must survive an autosave.
+    const stored = await filesStore.get(file.id);
+    const updated: WorkspaceFile = { ...file, ...stored, content, updatedAt: Date.now() };
     await filesStore.put(updated);
     setFiles((prev) => {
       const rest = prev.filter((f) => f.id !== file.id);
@@ -261,7 +267,12 @@ export function App() {
   }, []);
 
   const createFile = useCallback(
-    async (kind: 'ipynb' | 'py', name?: string, content?: string) => {
+    async (
+      kind: 'ipynb' | 'py',
+      name?: string,
+      content?: string,
+      extra?: Partial<WorkspaceFile>,
+    ): Promise<WorkspaceFile> => {
       const taken = (await filesStore.list()).map((f) => f.name);
       const file: WorkspaceFile = {
         id: fileId(),
@@ -273,11 +284,13 @@ export function App() {
             ? serializeIpynb({ name: '', cells: starterNotebook().cells.slice(0, 1).concat(newCodeCell()) })
             : STARTER_SCRIPT),
         updatedAt: Date.now(),
+        ...extra,
       };
       await filesStore.put(file);
       const { content: _c, ...meta } = file;
       setFiles((prev) => [meta, ...prev]);
       openWorkspaceFile(file);
+      return file;
     },
     [openWorkspaceFile],
   );
@@ -400,20 +413,121 @@ export function App() {
     [createFile, persistNow],
   );
 
+  const currentContent = useCallback(() => {
+    const file = currentFileRef.current;
+    if (!file) return undefined;
+    const isNb = file.kind === 'ipynb';
+    return {
+      text: isNb
+        ? serializeIpynb(notebookRef.current, runtimeStateRef.current.pythonVersion)
+        : scriptCodeRef.current,
+      mime: isNb ? 'application/x-ipynb+json' : 'text/x-python',
+    };
+  }, []);
+
   const downloadFile = useCallback(() => {
     const file = currentFileRef.current;
-    if (!file) return;
-    const isNb = file.kind === 'ipynb';
-    const text = isNb
-      ? serializeIpynb(notebookRef.current, runtimeStateRef.current.pythonVersion)
-      : scriptCodeRef.current;
-    const blob = new Blob([text], { type: isNb ? 'application/x-ipynb+json' : 'text/x-python' });
+    const current = currentContent();
+    if (!file || !current) return;
+    const blob = new Blob([current.text], { type: current.mime });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = file.name;
     a.click();
     URL.revokeObjectURL(a.href);
+  }, [currentContent]);
+
+  // ——— Google Drive (optional; hidden unless configured) ———
+  const [driveStatus, setDriveStatus] = useState<DriveStatus>('unavailable');
+  const [driveFiles, setDriveFiles] = useState<DriveFileMeta[]>([]);
+  const [driveBusy, setDriveBusy] = useState(false);
+
+  useEffect(() => {
+    if (getDriveTransport()) setDriveStatus('disconnected');
   }, []);
+
+  const refreshDriveFiles = useCallback(async () => {
+    const drive = getDriveTransport();
+    if (!drive) return;
+    setDriveFiles(await drive.list());
+  }, []);
+
+  const driveConnect = useCallback(async () => {
+    const drive = getDriveTransport();
+    if (!drive) return;
+    setDriveStatus('connecting');
+    try {
+      await drive.connect();
+      setDriveStatus('connected');
+      await refreshDriveFiles();
+    } catch (err) {
+      setDriveStatus('disconnected');
+      alert(t('drive.error', { message: err instanceof Error ? err.message : String(err) }));
+    }
+  }, [refreshDriveFiles]);
+
+  const driveSignOut = useCallback(() => {
+    getDriveTransport()?.signOut();
+    setDriveStatus('disconnected');
+    setDriveFiles([]);
+  }, []);
+
+  const driveSaveCurrent = useCallback(async () => {
+    const drive = getDriveTransport();
+    const file = currentFileRef.current;
+    const current = currentContent();
+    if (!drive || !file || !current) return;
+    setDriveBusy(true);
+    try {
+      const driveId = await drive.upload(
+        file.name,
+        current.text,
+        current.mime,
+        (await filesStore.get(file.id))?.driveId,
+      );
+      const stored = await filesStore.get(file.id);
+      if (stored) {
+        const updated = { ...stored, driveId, driveSavedAt: Date.now() };
+        await filesStore.put(updated);
+        const { content: _c, ...meta } = updated;
+        setFiles((prev) => prev.map((f) => (f.id === file.id ? meta : f)));
+      }
+      await refreshDriveFiles();
+    } catch (err) {
+      alert(t('drive.error', { message: err instanceof Error ? err.message : String(err) }));
+    } finally {
+      setDriveBusy(false);
+    }
+  }, [currentContent, refreshDriveFiles]);
+
+  const driveOpenFile = useCallback(
+    async (meta: DriveFileMeta) => {
+      const drive = getDriveTransport();
+      if (!drive) return;
+      setDriveBusy(true);
+      try {
+        const content = await drive.download(meta.id);
+        await persistNow();
+        const existing = (await filesStore.list()).find((f) => f.driveId === meta.id);
+        if (existing) {
+          const updated = { ...existing, content, updatedAt: Date.now(), driveSavedAt: Date.now() };
+          await filesStore.put(updated);
+          openWorkspaceFile(updated);
+        } else {
+          const kind: 'ipynb' | 'py' = meta.name.endsWith('.py') ? 'py' : 'ipynb';
+          await createFile(kind, meta.name, content, {
+            driveId: meta.id,
+            driveSavedAt: Date.now(),
+          });
+        }
+      } catch (err) {
+        alert(t('drive.error', { message: err instanceof Error ? err.message : String(err) }));
+      } finally {
+        setDriveBusy(false);
+      }
+    },
+    [createFile, openWorkspaceFile, persistNow],
+  );
 
   // ——— notebook edits ———
   const cellActions = useMemo(
@@ -447,6 +561,20 @@ export function App() {
       cells: [...nb.cells, type === 'code' ? newCodeCell() : newMarkdownCell()],
     }));
   }, []);
+
+  // Ctrl/Cmd+S: students press it out of habit — snapshot the workspace
+  // instead of showing the browser's save-page dialog. (Autosave already
+  // covers them; this is about not scaring anyone.)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        void persistNow();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [persistNow]);
 
   // Test/automation hook (also handy for classroom tooling).
   useEffect(() => {
@@ -496,6 +624,14 @@ export function App() {
             {currentFile.name}
           </button>
         )}
+        <button
+          class="iconbtn topbar__theme"
+          title={t('theme.toggle')}
+          aria-label={t('theme.toggle')}
+          onClick={() => setDarkTheme(toggleTheme())}
+        >
+          {darkTheme ? '☀' : '☾'}
+        </button>
       </header>
 
       <div class="actionbar">
@@ -537,6 +673,8 @@ export function App() {
         />
         <span
           class={`chip chip--${phase}`}
+          role="status"
+          aria-live="polite"
           title={
             runtimeState.pythonVersion
               ? t('status.pythonTitle', { version: runtimeState.pythonVersion })
@@ -579,6 +717,20 @@ export function App() {
         onDelete={(id) => void deleteFile(id)}
         onImport={() => fileInputRef.current?.click()}
         onOpenSample={(s) => void openSample(s)}
+        drive={{
+          status: driveStatus,
+          busy: driveBusy,
+          files: driveFiles,
+          currentDirty: (() => {
+            const meta = files.find((f) => f.id === currentFile?.id);
+            return Boolean(meta?.driveSavedAt && meta.updatedAt > meta.driveSavedAt);
+          })(),
+          currentLinked: Boolean(files.find((f) => f.id === currentFile?.id)?.driveId),
+          onConnect: () => void driveConnect(),
+          onSignOut: driveSignOut,
+          onSaveCurrent: () => void driveSaveCurrent(),
+          onOpenDriveFile: (m) => void driveOpenFile(m),
+        }}
       />
 
       {mode === 'script' && currentFile ? (
